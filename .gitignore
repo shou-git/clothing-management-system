@@ -1,0 +1,6 @@
+node_modules/
+database.db
+uploads/
+*.log
+*.zip
+.DS_Store
