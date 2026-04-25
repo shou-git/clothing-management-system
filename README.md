@@ -15,6 +15,20 @@
 - 零构建前端：Vue 3 CDN + 原生 CSS，部署简单
 - SQLite 数据库：首次启动自动初始化表结构
 
+## 项目截图
+
+| 首页 | 商品列表 |
+| --- | --- |
+| ![首页](docs/screenshots/home.jpg) | ![商品列表](docs/screenshots/products.jpg) |
+
+| 新增商品 | Look 列表 |
+| --- | --- |
+| ![新增商品](docs/screenshots/product-form.jpg) | ![Look 列表](docs/screenshots/looks.jpg) |
+
+| Look 详情 |
+| --- |
+| ![Look 详情](docs/screenshots/look-detail.jpg) |
+
 ## 技术栈
 
 - 后端：Node.js, Express, SQLite
@@ -132,6 +146,8 @@ npm run dev
 │   ├── look-form.html
 │   ├── css/style.css
 │   └── js/i18n.js
+├── docs/
+│   └── screenshots/
 ├── DEPLOY.md
 ├── QUICKSTART.md
 ├── USAGE.md
@@ -180,6 +196,20 @@ A lightweight web admin for clothing shoots, sample rooms, and small retail work
 - Bilingual UI: language toggle in the bottom-right corner, persisted in local storage
 - No frontend build step: Vue 3 via CDN + plain CSS
 - SQLite database: tables are initialized automatically on first run
+
+## Screenshots
+
+| Home | Products |
+| --- | --- |
+| ![Home](docs/screenshots/home.jpg) | ![Products](docs/screenshots/products.jpg) |
+
+| New Product | Looks |
+| --- | --- |
+| ![New Product](docs/screenshots/product-form.jpg) | ![Looks](docs/screenshots/looks.jpg) |
+
+| Look Detail |
+| --- |
+| ![Look Detail](docs/screenshots/look-detail.jpg) |
 
 ## Stack
 
@@ -298,6 +328,8 @@ Many-to-many relation table between products and Looks.
 │   ├── look-form.html
 │   ├── css/style.css
 │   └── js/i18n.js
+├── docs/
+│   └── screenshots/
 ├── DEPLOY.md
 ├── QUICKSTART.md
 ├── USAGE.md
