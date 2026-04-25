@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Look 表单</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/vue@3.3.4/dist/vue.global.js"></script>
+</head>
+
+<body>
+    <div id="app">
+        <!-- 顶部栏 -->
+        <div class="top-bar">
+            <div class="container">
+                <h1>{{ isEdit ? '编辑 Look' : '新增 Look' }}</h1>
+                <div class="actions">
+                    <a href="/products.html" class="btn btn-secondary">商品管理</a>
+                    <a href="/looks.html" class="btn btn-outline">返回列表</a>
+                </div>
+            </div>
+        </div>
+
+        <!-- 主内容 -->
+        <div class="container-narrow">
+            <div class="form-page">
+                <form @submit.prevent="submitForm">
+                    <!-- Look图 -->
+                    <div class="form-group">
+                        <label>Look 图（可选）</label>
+                        <div class="image-upload" @click="$refs.imageInput.click()">
+                            <input type="file" ref="imageInput" @change="handleImageSelect" accept="image/*">
+                            <div v-if="!form.image">
+                                <div style="font-size: 48px; margin-bottom: 10px;">📷</div>
+                                <div>点击上传 Look 图片</div>
+                            </div>
+                            <div v-else class="image-preview">
+                                <img :src="form.image" alt="Look图">
+                            </div>
+                        </div>
+                        <div class="hint">支持 JPG、PNG、GIF 格式，最大 10MB</div>
+                    </div>
+
+                    <!-- Look名称 -->
+                    <div class="form-group">
+                        <label>Look 名称 *</label>
+                        <input type="text" v-model="form.name" placeholder="请输入 Look 名称" required autofocus>
+                    </div>
+
+                    <!-- 备注 -->
+                    <div class="form-group">
+                        <label>备注</label>
+                        <textarea v-model="form.notes" placeholder="Look 备注信息" rows="4"></textarea>
+                    </div>
+
+                    <!-- 选择商品 -->
+                    <div class="form-group">
+                        <label>选择商品</label>
+                        <div
+                            style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; gap: 10px;">
+                            <input type="text" v-model="productSearch" @input="searchProducts" placeholder="搜索商品（条码/货号）"
+                                style="flex: 1; padding: 10px; border: 2px solid #ddd; border-radius: 5px;">
+                            <div style="display: flex; align-items: center; width: 180px; flex-shrink: 0;">
+                                <span style="font-size: 12px; margin-right: 8px; white-space: nowrap;">每行 {{ gridColumns
+                                    }} 个</span>
+                                <input type="range" v-model.number="gridColumns" min="2" max="6" step="1"
+                                    style="flex: 1;">
+                            </div>
+                        </div>
+                        <div class="product-selector">
+                            <div v-if="loadingProducts" style="text-align: center; padding: 20px; color: #999;">
+                                加载中...
+                            </div>
+                            <div v-else-if="availableProducts.length === 0"
+                                style="text-align: center; padding: 20px; color: #999;">
+                                {{ productSearch ? '未找到匹配的商品' : '暂无商品' }}
+                            </div>
+                            <div v-else class="product-grid"
+                                :style="{ gridTemplateColumns: `repeat(${gridColumns}, 1fr)` }">
+                                <div v-for="product in availableProducts" :key="product.id" class="product-card"
+                                    :class="{ active: form.product_ids.includes(product.id) }"
+                                    @click="toggleProduct(product.id)">
+                                    <div class="product-card-check" v-if="form.product_ids.includes(product.id)">✓</div>
+                                    <div class="product-card-image">
+                                        <img v-if="product.image" :src="product.thumbnail || product.image"
+                                            :alt="product.product_no" @error="handleImageError($event, product.image)">
+                                        <div v-else
+                                            style="background: #f0f0f0; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; font-size: 12px; color: #999;">
+                                            无图
+                                        </div>
+                                    </div>
+                                    <div class="product-card-info">
+                                        <div style="font-weight: bold; margin-bottom: 5px;">{{ product.product_no ||
+                                            '无货号' }}</div>
+                                        <div style="font-size: 12px; color: #666;">
+                                            <div>{{ product.color || '-' }} | {{ product.size || '-' }}</div>
+                                            <div style="font-family: monospace;">{{ product.barcode || '-' }}</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="hint">已选择 {{ form.product_ids.length }} 件商品</div>
+                    </div>
+
+                    <!-- 按钮 -->
+                    <div class="form-buttons">
+                        <button type="submit" class="btn btn-primary btn-large" :disabled="submitting">
+                            {{ submitting ? '提交中...' : (isEdit ? '保存修改' : '添加 Look') }}
+                        </button>
+                        <a href="/looks.html" class="btn btn-outline btn-large">取消</a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const { createApp } = Vue;
+
+        createApp({
+            data() {
+                return {
+                    form: {
+                        image: '',
+                        name: '',
+                        notes: '',
+                        product_ids: []
+                    },
+                    gridColumns: 3,
+                    availableProducts: [],
+                    productSearch: '',
+                    searchTimeout: null,
+                    isEdit: false,
+                    lookId: null,
+                    submitting: false,
+                    uploadingImage: false,
+                    loadingProducts: true
+                }
+            },
+            mounted() {
+                const params = new URLSearchParams(window.location.search);
+                this.lookId = params.get('id');
+                if (this.lookId) {
+                    this.isEdit = true;
+                    this.loadLook();
+                }
+                this.loadProducts();
+                
+                // 添加粘贴板图片支持
+                document.addEventListener('paste', this.handlePaste);
+                // 添加拖拽图片支持
+                document.addEventListener('dragover', this.handleDragOver);
+                document.addEventListener('drop', this.handleDrop);
+            },
+            beforeUnmount() {
+                // 清理事件监听器
+                document.removeEventListener('paste', this.handlePaste);
+                document.removeEventListener('dragover', this.handleDragOver);
+                document.removeEventListener('drop', this.handleDrop);
+            },
+            methods: {
+                async loadLook() {
+                    try {
+                        const response = await fetch(`/api/looks/${this.lookId}`);
+                        if (response.ok) {
+                            const look = await response.json();
+                            this.form = {
+                                image: look.image || '',
+                                name: look.name || '',
+                                notes: look.notes || '',
+                                product_ids: look.products ? look.products.map(p => p.id) : []
+                            };
+                        }
+                    } catch (error) {
+                        console.error('加载Look失败:', error);
+                        this.showNotification('加载Look失败', 'error');
+                    }
+                },
+                async loadProducts() {
+                    try {
+                        this.loadingProducts = true;
+                        const url = this.productSearch
+                            ? `/api/products?search=${encodeURIComponent(this.productSearch)}`
+                            : '/api/products';
+                        const response = await fetch(url);
+                        this.availableProducts = await response.json();
+                    } catch (error) {
+                        console.error('加载商品失败:', error);
+                    } finally {
+                        this.loadingProducts = false;
+                    }
+                },
+                searchProducts() {
+                    clearTimeout(this.searchTimeout);
+                    this.searchTimeout = setTimeout(() => {
+                        this.loadProducts();
+                    }, 300);
+                },
+                toggleProduct(productId) {
+                    const index = this.form.product_ids.indexOf(productId);
+                    if (index > -1) {
+                        this.form.product_ids.splice(index, 1);
+                    } else {
+                        this.form.product_ids.push(productId);
+                    }
+                },
+                async uploadImage(file) {
+                    if (!file) return;
+
+                    // 检查文件类型
+                    if (!file.type.startsWith('image/')) {
+                        this.showNotification('请上传图片文件', 'error');
+                        return;
+                    }
+
+                    // 检查文件大小
+                    if (file.size > 10 * 1024 * 1024) {
+                        this.showNotification('图片大小不能超过 10MB', 'error');
+                        return;
+                    }
+
+                    try {
+                        this.uploadingImage = true;
+                        const formData = new FormData();
+                        formData.append('image', file);
+                        formData.append('type', 'looks');
+
+                        // 使用查询参数传递type，确保multer能正确获取
+                        const response = await fetch('/api/upload?type=looks', {
+                            method: 'POST',
+                            body: formData
+                        });
+
+                        const result = await response.json();
+                        if (result.success) {
+                            this.form.image = result.path;
+                            this.showNotification('图片上传成功', 'success');
+                        } else {
+                            this.showNotification('图片上传失败', 'error');
+                        }
+                    } catch (error) {
+                        console.error('上传图片失败:', error);
+                        this.showNotification('上传图片失败', 'error');
+                    } finally {
+                        this.uploadingImage = false;
+                    }
+                },
+                async handleImageSelect(e) {
+                    const file = e.target.files[0];
+                    await this.uploadImage(file);
+                },
+                // 处理粘贴板图片
+                async handlePaste(e) {
+                    const items = e.clipboardData?.items;
+                    if (!items) return;
+
+                    for (let i = 0; i < items.length; i++) {
+                        const item = items[i];
+                        if (item.type.indexOf('image') !== -1) {
+                            e.preventDefault();
+                            const file = item.getAsFile();
+                            await this.uploadImage(file);
+                            break;
+                        }
+                    }
+                },
+                // 处理拖拽悬停
+                handleDragOver(e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    // 添加视觉反馈
+                    if (!e.dataTransfer) return;
+                    e.dataTransfer.dropEffect = 'copy';
+                },
+                // 处理拖拽放下
+                async handleDrop(e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+
+                    const files = e.dataTransfer?.files;
+                    if (!files || files.length === 0) return;
+
+                    // 只处理第一个图片文件
+                    for (let i = 0; i < files.length; i++) {
+                        const file = files[i];
+                        if (file.type.startsWith('image/')) {
+                            await this.uploadImage(file);
+                            break;
+                        }
+                    }
+                },
+                async submitForm() {
+                    if (this.submitting) return;
+
+                    // 验证必填项
+                    if (!this.form.name) {
+                        this.showNotification('Look 名称不能为空', 'error');
+                        return;
+                    }
+
+                    try {
+                        this.submitting = true;
+
+                        const url = this.isEdit
+                            ? `/api/looks/${this.lookId}`
+                            : '/api/looks';
+
+                        const method = this.isEdit ? 'PUT' : 'POST';
+
+                        const response = await fetch(url, {
+                            method: method,
+                            headers: {
+                                'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify(this.form)
+                        });
+
+                        const result = await response.json();
+
+                        if (result.success) {
+                            this.showNotification(this.isEdit ? '修改成功' : '添加成功', 'success');
+                            setTimeout(() => {
+                                window.location.href = '/looks.html';
+                            }, 1000);
+                        } else {
+                            this.showNotification(result.error || '提交失败', 'error');
+                        }
+                    } catch (error) {
+                        console.error('提交失败:', error);
+                        this.showNotification('提交失败', 'error');
+                    } finally {
+                        this.submitting = false;
+                    }
+                },
+                handleImageError(e, originalSrc) {
+                    // 如果当前加载的是缩略图（文件名包含_thumb），且失败了，尝试加载原图
+                    if (originalSrc && e.target.src.includes('_thumb') && !e.target.dataset.retried) {
+                        // console.log('缩略图加载失败，尝试加载原图:', originalSrc);
+                        e.target.dataset.retried = true; // 防止死循环
+                        e.target.src = originalSrc;
+                        return;
+                    }
+
+                    console.error('图片加载失败:', e.target.src);
+                    e.target.style.display = 'none';
+                    const parent = e.target.parentElement;
+                    if (parent && !parent.querySelector('.no-image-placeholder')) {
+                        const placeholder = document.createElement('div');
+                        placeholder.className = 'no-image-placeholder';
+                        placeholder.style.cssText = 'background: #f0f0f0; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; font-size: 12px; color: #999;';
+                        placeholder.textContent = '无图';
+                        parent.appendChild(placeholder);
+                    }
+                },
+                showNotification(message, type = 'info') {
+                    const notification = document.createElement('div');
+                    notification.className = `notification notification-${type}`;
+                    notification.textContent = message;
+                    document.body.appendChild(notification);
+
+                    setTimeout(() => {
+                        notification.remove();
+                    }, 3000);
+                }
+            }
+        }).mount('#app');
+    </script>
+    <script src="/js/i18n.js"></script>
+</body>
+
+</html>

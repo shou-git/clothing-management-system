@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>商品表单</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/vue@3.3.4/dist/vue.global.js"></script>
+</head>
+
+<body>
+    <div id="app">
+        <!-- 顶部栏 -->
+        <div class="top-bar">
+            <div class="container">
+                <h1>{{ isEdit ? '编辑商品' : '新增商品' }}</h1>
+                <div class="actions">
+                    <a href="/looks.html" class="btn btn-secondary" style="background: #9C27B0;">Look管理</a>
+                    <a href="/products.html" class="btn btn-outline">返回列表</a>
+                </div>
+            </div>
+        </div>
+
+        <!-- 主内容 -->
+        <div class="container-narrow">
+            <div class="form-page">
+                <form @submit.prevent="submitForm">
+                    <!-- 商品图片 -->
+                    <div class="form-group">
+                        <label>商品图片</label>
+                        <div class="image-upload" @click="$refs.imageInput.click()">
+                            <input type="file" ref="imageInput" @change="handleImageSelect" accept="image/*">
+                            <div v-if="!form.image">
+                                <div style="font-size: 48px; margin-bottom: 10px;">📷</div>
+                                <div>点击上传商品图片</div>
+                            </div>
+                            <div v-else class="image-preview">
+                                <img :src="form.image" alt="商品图片">
+                            </div>
+                        </div>
+                        <div class="hint">支持 JPG、PNG、GIF 格式，最大 10MB</div>
+                    </div>
+
+                    <!-- 货号 -->
+                    <div class="form-group">
+                        <label>货号 *</label>
+                        <input type="text" v-model="form.product_no" placeholder="请输入货号" required ref="productNoInput"
+                            autofocus>
+                    </div>
+
+                    <!-- 条形码 -->
+                    <div class="form-group">
+                        <label>条形码</label>
+                        <input type="text" v-model="form.barcode" placeholder="请扫描或输入条形码（可选）">
+                        <div class="hint">支持扫码枪直接扫描</div>
+                    </div>
+
+                    <!-- 设计师 -->
+                    <div class="form-group">
+                        <label>设计师</label>
+                        <input type="text" v-model="form.designer" placeholder="请输入设计师名称">
+                    </div>
+
+                    <!-- 颜色 -->
+                    <div class="form-group">
+                        <label>颜色</label>
+                        <input type="text" v-model="form.color" placeholder="例如：白色、黑色、红色">
+                    </div>
+
+                    <!-- 尺寸 -->
+                    <div class="form-group">
+                        <label>尺寸</label>
+                        <div class="combo-input">
+                            <select v-model="sizeSelect" @change="handleSizeSelect">
+                                <option value="">选择尺寸</option>
+                                <option value="S">S</option>
+                                <option value="M">M</option>
+                                <option value="L">L</option>
+                                <option value="XL">XL</option>
+                                <option value="XXL">XXL</option>
+                                <option value="custom">自定义</option>
+                            </select>
+                            <input type="text" v-model="form.size" placeholder="或手动输入尺寸">
+                        </div>
+                    </div>
+
+                    <!-- 品名 -->
+                    <div class="form-group">
+                        <label>品名</label>
+                        <input type="text" v-model="form.product_name" placeholder="例如：连衣裙、衬衫">
+                    </div>
+
+                    <!-- 备注 -->
+                    <div class="form-group">
+                        <label>备注</label>
+                        <textarea v-model="form.notes" placeholder="其他备注信息" rows="4"></textarea>
+                    </div>
+
+                    <!-- 按钮 -->
+                    <div class="form-buttons">
+                        <button type="submit" class="btn btn-primary btn-large" :disabled="submitting">
+                            {{ submitting ? '提交中...' : (isEdit ? '保存修改' : '添加商品') }}
+                        </button>
+                        <a href="/products.html" class="btn btn-outline btn-large">取消</a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const { createApp } = Vue;
+
+        createApp({
+            data() {
+                return {
+                    form: {
+                        image: '',
+                        product_no: '',
+                        barcode: '',
+                        designer: '',
+                        color: '',
+                        size: '',
+                        product_name: '',
+                        notes: ''
+                    },
+                    sizeSelect: '',
+                    isEdit: false,
+                    productId: null,
+                    submitting: false,
+                    uploadingImage: false
+                }
+            },
+            mounted() {
+                const params = new URLSearchParams(window.location.search);
+                this.productId = params.get('id');
+                if (this.productId) {
+                    this.isEdit = true;
+                    this.loadProduct();
+                }
+                
+                // 添加粘贴板图片支持
+                document.addEventListener('paste', this.handlePaste);
+                // 添加拖拽图片支持
+                document.addEventListener('dragover', this.handleDragOver);
+                document.addEventListener('drop', this.handleDrop);
+            },
+            beforeUnmount() {
+                // 清理事件监听器
+                document.removeEventListener('paste', this.handlePaste);
+                document.removeEventListener('dragover', this.handleDragOver);
+                document.removeEventListener('drop', this.handleDrop);
+            },
+            methods: {
+                async loadProduct() {
+                    try {
+                        const response = await fetch(`/api/products/${this.productId}`);
+                        if (response.ok) {
+                            const product = await response.json();
+                            this.form = {
+                                image: product.image || '',
+                                product_no: product.product_no || '',
+                                barcode: product.barcode || '',
+                                designer: product.designer || '',
+                                color: product.color || '',
+                                size: product.size || '',
+                                product_name: product.product_name || '',
+                                notes: product.notes || ''
+                            };
+
+                            // 设置下拉框默认值
+                            if (['S', 'M', 'L', 'XL', 'XXL'].includes(this.form.size)) {
+                                this.sizeSelect = this.form.size;
+                            }
+                        }
+                    } catch (error) {
+                        console.error('加载商品失败:', error);
+                        this.showNotification('加载商品失败', 'error');
+                    }
+                },
+                async uploadImage(file) {
+                    if (!file) return;
+
+                    // 检查文件类型
+                    if (!file.type.startsWith('image/')) {
+                        this.showNotification('请上传图片文件', 'error');
+                        return;
+                    }
+
+                    // 检查文件大小
+                    if (file.size > 10 * 1024 * 1024) {
+                        this.showNotification('图片大小不能超过 10MB', 'error');
+                        return;
+                    }
+
+                    try {
+                        this.uploadingImage = true;
+                        const formData = new FormData();
+                        formData.append('image', file);
+                        formData.append('type', 'products');
+
+                        // 使用查询参数传递type，确保multer能正确获取
+                        const response = await fetch('/api/upload?type=products', {
+                            method: 'POST',
+                            body: formData
+                        });
+
+                        const result = await response.json();
+                        if (result.success) {
+                            this.form.image = result.path;
+                            this.showNotification('图片上传成功', 'success');
+                        } else {
+                            this.showNotification('图片上传失败', 'error');
+                        }
+                    } catch (error) {
+                        console.error('上传图片失败:', error);
+                        this.showNotification('上传图片失败', 'error');
+                    } finally {
+                        this.uploadingImage = false;
+                    }
+                },
+                async handleImageSelect(e) {
+                    const file = e.target.files[0];
+                    await this.uploadImage(file);
+                },
+                // 处理粘贴板图片
+                async handlePaste(e) {
+                    const items = e.clipboardData?.items;
+                    if (!items) return;
+
+                    for (let i = 0; i < items.length; i++) {
+                        const item = items[i];
+                        if (item.type.indexOf('image') !== -1) {
+                            e.preventDefault();
+                            const file = item.getAsFile();
+                            await this.uploadImage(file);
+                            break;
+                        }
+                    }
+                },
+                // 处理拖拽悬停
+                handleDragOver(e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    // 添加视觉反馈
+                    if (!e.dataTransfer) return;
+                    e.dataTransfer.dropEffect = 'copy';
+                },
+                // 处理拖拽放下
+                async handleDrop(e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+
+                    const files = e.dataTransfer?.files;
+                    if (!files || files.length === 0) return;
+
+                    // 只处理第一个图片文件
+                    for (let i = 0; i < files.length; i++) {
+                        const file = files[i];
+                        if (file.type.startsWith('image/')) {
+                            await this.uploadImage(file);
+                            break;
+                        }
+                    }
+                },
+                handleSizeSelect() {
+                    if (this.sizeSelect && this.sizeSelect !== 'custom') {
+                        this.form.size = this.sizeSelect;
+                    } else if (this.sizeSelect === 'custom') {
+                        this.form.size = '';
+                    }
+                },
+                async submitForm() {
+                    if (this.submitting) return;
+
+                    // 验证必填项（只要求货号必填）
+                    if (!this.form.product_no) {
+                        this.showNotification('货号不能为空', 'error');
+                        return;
+                    }
+
+                    try {
+                        this.submitting = true;
+
+                        const url = this.isEdit
+                            ? `/api/products/${this.productId}`
+                            : '/api/products';
+
+                        const method = this.isEdit ? 'PUT' : 'POST';
+
+                        const response = await fetch(url, {
+                            method: method,
+                            headers: {
+                                'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify(this.form)
+                        });
+
+                        const result = await response.json();
+
+                        if (result.success) {
+                            this.showNotification(this.isEdit ? '修改成功' : '添加成功', 'success');
+                            setTimeout(() => {
+                                window.location.href = '/products.html';
+                            }, 1000);
+                        } else {
+                            this.showNotification(result.error || '提交失败', 'error');
+                        }
+                    } catch (error) {
+                        console.error('提交失败:', error);
+                        this.showNotification('提交失败', 'error');
+                    } finally {
+                        this.submitting = false;
+                    }
+                },
+                showNotification(message, type = 'info') {
+                    const notification = document.createElement('div');
+                    notification.className = `notification notification-${type}`;
+                    notification.textContent = message;
+                    document.body.appendChild(notification);
+
+                    setTimeout(() => {
+                        notification.remove();
+                    }, 3000);
+                }
+            }
+        }).mount('#app');
+    </script>
+    <script src="/js/i18n.js"></script>
+</body>
+
+</html>

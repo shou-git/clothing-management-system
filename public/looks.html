@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Look 管理</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/vue@3.3.4/dist/vue.global.js"></script>
+</head>
+
+<body>
+    <div id="app">
+        <!-- 顶部栏 -->
+        <div class="top-bar">
+            <div class="container">
+                <h1>Look 管理</h1>
+                <div class="actions">
+                    <div class="search-box">
+                        <input type="text" v-model="searchQuery" @input="handleSearch" placeholder="搜索Look（名称/备注/包含商品）"
+                            autofocus>
+                        <span class="search-icon">🔍</span>
+                    </div>
+                    <a href="/look-form.html" class="btn btn-primary">新增 Look</a>
+                    <a href="/products.html" class="btn btn-secondary">商品管理</a>
+                    <a href="/" class="btn btn-outline">返回首页</a>
+                </div>
+            </div>
+        </div>
+
+        <!-- 主内容 -->
+        <div class="container">
+            <!-- 加载状态 -->
+            <div v-if="loading" class="loading">
+                <div class="loading-spinner"></div>
+                <div>加载中...</div>
+            </div>
+
+            <!-- 空状态 -->
+            <div v-else-if="looks.length === 0" class="empty-state">
+                <div class="empty-state-icon">✨</div>
+                <div class="empty-state-text">
+                    {{ searchQuery ? '未找到匹配的Look' : '暂无Look，点击上方"新增Look"开始添加' }}
+                </div>
+            </div>
+
+            <!-- Look列表 -->
+            <div v-else class="card-grid">
+                <div v-for="look in looks" :key="look.id" class="card" @click="goToDetail(look.id)">
+                    <div class="card-image">
+                        <img v-if="look.image" :src="look.image" :alt="look.name" @error="handleImageError">
+                        <div v-else
+                            style="display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; color: #999;">
+                            暂无图片</div>
+                    </div>
+                    <div class="card-body">
+                        <div class="card-title">{{ look.name }}</div>
+                        <div class="card-info">{{ look.notes || '无备注' }}</div>
+                        <div class="card-meta">
+                            <span>包含 {{ look.product_count || 0 }} 件商品</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const { createApp } = Vue;
+
+        createApp({
+            data() {
+                return {
+                    looks: [],
+                    searchQuery: '',
+                    loading: true,
+                    searchTimeout: null
+                }
+            },
+            mounted() {
+                this.loadLooks();
+            },
+            methods: {
+                async loadLooks() {
+                    try {
+                        this.loading = true;
+                        const url = this.searchQuery
+                            ? `/api/looks?search=${encodeURIComponent(this.searchQuery)}`
+                            : '/api/looks';
+                        const response = await fetch(url);
+                        this.looks = await response.json();
+                        console.log('Loaded looks:', this.looks);
+                    } catch (error) {
+                        console.error('加载Look失败:', error);
+                        this.showNotification('加载Look失败', 'error');
+                    } finally {
+                        this.loading = false;
+                    }
+                },
+                handleImageError(e) {
+                    console.error('图片加载失败:', e.target.src);
+                    e.target.style.display = 'none';
+                },
+                handleSearch() {
+                    // 防抖处理
+                    clearTimeout(this.searchTimeout);
+                    this.searchTimeout = setTimeout(() => {
+                        this.loadLooks();
+                    }, 300);
+                },
+                goToDetail(id) {
+                    window.location.href = `/look-detail.html?id=${id}`;
+                },
+                formatDate(dateStr) {
+                    if (!dateStr) return '-';
+                    const date = new Date(dateStr);
+                    return date.toLocaleDateString('zh-CN');
+                },
+                showNotification(message, type = 'info') {
+                    const notification = document.createElement('div');
+                    notification.className = `notification notification-${type}`;
+                    notification.textContent = message;
+                    document.body.appendChild(notification);
+
+                    setTimeout(() => {
+                        notification.remove();
+                    }, 3000);
+                }
+            }
+        }).mount('#app');
+    </script>
+    <script src="/js/i18n.js"></script>
+</body>
+
+</html>

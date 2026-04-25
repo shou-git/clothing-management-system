@@ -1,0 +1,536 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>商品管理</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/vue@3.3.4/dist/vue.global.js"></script>
+</head>
+
+<body>
+    <div id="app">
+        <!-- 顶部栏 -->
+        <div class="top-bar">
+            <div class="container">
+                <h1>商品管理</h1>
+                <div class="actions">
+                    <div class="search-box">
+                        <input type="text" v-model="searchQuery" @input="handleSearch"
+                            placeholder="搜索商品（货号/条码/设计师/颜色/尺寸/品名）" ref="searchInput" autofocus>
+                        <span class="search-icon">🔍</span>
+                    </div>
+                    <a href="/product-form.html" class="btn btn-primary">新增商品</a>
+                    <button @click="exportExcel" class="btn btn-secondary">导出全部</button>
+                    <button @click="exportSelected" class="btn btn-secondary" v-if="selectedIds.length > 0">
+                        导出选中({{selectedIds.length}})
+                    </button>
+                    <button @click="showImportDialog" class="btn btn-secondary">导入Excel</button>
+                    <button @click="downloadTemplate" class="btn btn-outline">下载模板</button>
+                    <button @click="deleteSelected" class="btn" style="background: #f44336; color: white;"
+                        v-if="selectedIds.length > 0">
+                        删除选中({{selectedIds.length}})
+                    </button>
+                    <a href="/looks.html" class="btn btn-secondary" style="background: #9C27B0;">Look管理</a>
+                    <a href="/" class="btn btn-outline">返回首页</a>
+                </div>
+            </div>
+        </div>
+
+        <!-- 主内容 -->
+        <div class="container">
+            <!-- 批量操作提示 -->
+            <div v-if="products.length > 0"
+                style="margin-bottom: 15px; padding: 10px; background: #f5f5f5; border-radius: 5px; display: flex; align-items: center; justify-content: space-between;">
+                <div>
+                    <label style="cursor: pointer; display: inline-flex; align-items: center;">
+                        <input type="checkbox" :checked="isAllSelected" @change="toggleSelectAll"
+                            :indeterminate.prop="isSomeSelected && !isAllSelected"
+                            style="width: 18px; height: 18px; margin-right: 8px; cursor: pointer;">
+                        <span style="font-weight: 500;">
+                            {{ isAllSelected ? '取消全选' : '全选' }}
+                        </span>
+                    </label>
+                    <span v-if="selectedIds.length > 0" style="margin-left: 15px; color: #666;">
+                        已选择 {{selectedIds.length}} / {{products.length}} 件商品
+                    </span>
+                </div>
+                <div v-if="selectedIds.length > 0">
+                    <button @click="clearSelection" class="btn btn-outline" style="padding: 5px 15px; font-size: 14px;">
+                        清空选择
+                    </button>
+                </div>
+            </div>
+
+            <!-- 加载状态 -->
+            <div v-if="loading" class="loading">
+                <div class="loading-spinner"></div>
+                <div>加载中...</div>
+            </div>
+
+            <!-- 空状态 -->
+            <div v-else-if="products.length === 0" class="empty-state">
+                <div class="empty-state-icon">📦</div>
+                <div class="empty-state-text">
+                    {{ searchQuery ? '未找到匹配的商品' : '暂无商品，点击上方"新增商品"开始添加' }}
+                </div>
+            </div>
+
+            <!-- 商品列表 -->
+            <div v-else class="card-grid">
+                <div v-for="product in products" :key="product.id" class="card"
+                    :class="{ 'card-selected': selectedIds.includes(product.id) }" style="position: relative;">
+                    <!-- 选择复选框 -->
+                    <div style="position: absolute; top: 10px; left: 10px; z-index: 10;">
+                        <input type="checkbox" :checked="selectedIds.includes(product.id)"
+                            @change="toggleSelect(product.id)" @click.stop style="width: 20px; height: 20px; cursor: pointer; 
+                                   box-shadow: 0 2px 4px rgba(0,0,0,0.2);">
+                    </div>
+
+                    <div @click="goToDetail(product.id)" style="cursor: pointer;">
+                        <div class="card-image">
+                            <img v-if="product.image" :src="product.image" :alt="product.product_no"
+                                @error="handleImageError">
+                            <div v-else
+                                style="display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; color: #999;">
+                                暂无图片</div>
+                        </div>
+                        <div class="card-body">
+                            <!-- 1. 货号 -->
+                            <div class="card-title">{{ product.product_no || '无货号' }}</div>
+                            <!-- 2. 条形码 -->
+                            <div class="card-info">条码: {{ product.barcode || '-' }}</div>
+                            <!-- 3. 设计师 -->
+                            <div class="card-info" v-if="product.designer">设计师: {{ product.designer }}</div>
+                            <!-- 4. 颜色 -->
+                            <div class="card-info">颜色: {{ product.color || '-' }}</div>
+                            <!-- 5. 尺寸 -->
+                            <div class="card-info">尺寸: {{ product.size || '-' }}</div>
+                            <!-- 6. 品名 -->
+                            <div class="card-info" v-if="product.product_name">品名: {{ product.product_name }}</div>
+                            <!-- 7. 备注 -->
+                            <div class="card-info" v-if="product.notes" style="font-size: 12px; color: #999;">备注: {{
+                                product.notes }}</div>
+                            <!-- 8. 商品ID -->
+                            <div class="card-meta">
+                                <span>ID: {{ product.id }}</span>
+                                <span>{{ product.look_count || 0 }} 个Look</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 导入对话框 -->
+        <div v-if="showImport" class="modal-overlay" @click.self="closeImportDialog">
+            <div class="modal-dialog" style="max-width: 600px;">
+                <h3 style="margin-bottom: 20px;">导入商品</h3>
+                
+                <!-- 文件选择区 -->
+                <div class="form-group" v-if="!uploading">
+                    <label style="font-size: 16px; font-weight: 500;">选择Excel文件</label>
+                    <input type="file" @change="handleFileSelect" accept=".xlsx,.xls" 
+                           style="padding: 10px; border: 2px dashed #ccc; border-radius: 5px; width: 100%;">
+                    <div
+                        style="margin-top: 15px; padding: 12px; background: #f0f7ff; border-radius: 5px; font-size: 14px; color: #666; line-height: 1.6;">
+                        <strong>💡 提示：</strong><br>
+                        • Excel 表格中可以插入图片，图片会自动导入<br>
+                        • 支持 JPEG、JPG、PNG、GIF、BMP、TIFF 等常见图片格式<br>
+                        • 建议将图片插入到第8列（H列），系统会自动识别图片所在行<br>
+                        • 文件大小已无限制，但建议文件不要过大以避免上传超时
+                    </div>
+                </div>
+
+                <!-- 上传进度区 -->
+                <div v-if="uploading" style="padding: 20px 0;">
+                    <div style="text-align: center; margin-bottom: 15px;">
+                        <div style="font-size: 16px; font-weight: 500; margin-bottom: 10px;">正在上传...</div>
+                        <div style="font-size: 14px; color: #666;">{{uploadProgress}}%</div>
+                    </div>
+                    <div style="width: 100%; height: 30px; background: #f0f0f0; border-radius: 15px; overflow: hidden; box-shadow: inset 0 1px 3px rgba(0,0,0,0.1);">
+                        <div :style="{width: uploadProgress + '%', height: '100%', background: 'linear-gradient(90deg, #4CAF50, #8BC34A)', transition: 'width 0.3s ease', display: 'flex', alignItems: 'center', justifyContent: 'flex-end', paddingRight: '10px', color: 'white', fontWeight: 'bold', fontSize: '14px'}">
+                            <span v-if="uploadProgress > 10">{{uploadProgress}}%</span>
+                        </div>
+                    </div>
+                    <div style="text-align: center; margin-top: 10px; font-size: 13px; color: #999;">
+                        请勿关闭页面，正在处理文件...
+                    </div>
+                </div>
+
+                <!-- 按钮区 -->
+                <div class="form-buttons" style="margin-top: 20px;">
+                    <button @click="importExcel" class="btn btn-primary" :disabled="!selectedFile || uploading">
+                        {{uploading ? '上传中...' : '确认导入'}}
+                    </button>
+                    <button @click="closeImportDialog" class="btn btn-outline" :disabled="uploading">取消</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <style>
+        /* 商品图片竖向显示，长2高3 */
+        .card-image {
+            height: auto !important;
+            aspect-ratio: 2 / 3;
+        }
+
+        .card-selected {
+            border: 2px solid #2196F3;
+            box-shadow: 0 4px 12px rgba(33, 150, 243, 0.3);
+        }
+
+        input[type="checkbox"]:indeterminate {
+            background-color: #2196F3;
+            border-color: #2196F3;
+        }
+
+        input[type="checkbox"]:indeterminate::after {
+            content: '';
+            display: block;
+            width: 10px;
+            height: 2px;
+            background: white;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+        }
+    </style>
+
+    <script>
+        const { createApp } = Vue;
+
+        createApp({
+            data() {
+                return {
+                    products: [],
+                    searchQuery: '',
+                    searchTimeout: null,
+                    loading: true,
+                    showImport: false,
+                    selectedFile: null,
+                    selectedIds: [],  // 存储选中的商品ID
+                    uploading: false,  // 上传状态
+                    uploadProgress: 0  // 上传进度
+                }
+            },
+            computed: {
+                isAllSelected() {
+                    return this.products.length > 0 && this.selectedIds.length === this.products.length;
+                },
+                isSomeSelected() {
+                    return this.selectedIds.length > 0 && this.selectedIds.length < this.products.length;
+                }
+            },
+            mounted() {
+                this.loadProducts();
+            },
+            methods: {
+                async loadProducts() {
+                    this.loading = true;
+                    try {
+                        const url = this.searchQuery
+                            ? `/api/products?search=${encodeURIComponent(this.searchQuery)}`
+                            : '/api/products';
+                        const response = await fetch(url);
+                        this.products = await response.json();
+                    } catch (error) {
+                        console.error('加载商品失败:', error);
+                        this.showNotification('加载商品失败', 'error');
+                    } finally {
+                        this.loading = false;
+                    }
+                },
+                handleSearch() {
+                    clearTimeout(this.searchTimeout);
+                    this.searchTimeout = setTimeout(() => {
+                        this.loadProducts();
+                    }, 300);
+                },
+                goToDetail(id) {
+                    window.location.href = `/product-detail.html?id=${id}`;
+                },
+                async exportExcel() {
+                    try {
+                        const response = await fetch('/api/products/export', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify({})
+                        });
+
+                        if (response.ok) {
+                            const blob = await response.blob();
+                            const url = window.URL.createObjectURL(blob);
+                            const a = document.createElement('a');
+                            a.href = url;
+                            a.download = `products_all_${Date.now()}.xlsx`;
+                            document.body.appendChild(a);
+                            a.click();
+                            window.URL.revokeObjectURL(url);
+                            document.body.removeChild(a);
+                            this.showNotification('导出成功', 'success');
+                        } else {
+                            throw new Error('导出失败');
+                        }
+                    } catch (error) {
+                        console.error('导出失败:', error);
+                        this.showNotification('导出失败', 'error');
+                    }
+                },
+                async exportSelected() {
+                    if (this.selectedIds.length === 0) {
+                        this.showNotification('请先选择要导出的商品', 'error');
+                        return;
+                    }
+
+                    try {
+                        const response = await fetch('/api/products/export', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify({ ids: this.selectedIds })
+                        });
+
+                        if (response.ok) {
+                            const blob = await response.blob();
+                            const url = window.URL.createObjectURL(blob);
+                            const a = document.createElement('a');
+                            a.href = url;
+                            a.download = `products_selected_${Date.now()}.xlsx`;
+                            document.body.appendChild(a);
+                            a.click();
+                            window.URL.revokeObjectURL(url);
+                            document.body.removeChild(a);
+                            this.showNotification(`成功导出 ${this.selectedIds.length} 件商品`, 'success');
+                        } else {
+                            throw new Error('导出失败');
+                        }
+                    } catch (error) {
+                        console.error('导出失败:', error);
+                        this.showNotification('导出失败', 'error');
+                    }
+                },
+                async downloadTemplate() {
+                    try {
+                        const response = await fetch('/api/products/template/download');
+                        if (response.ok) {
+                            const blob = await response.blob();
+                            const url = window.URL.createObjectURL(blob);
+                            const a = document.createElement('a');
+                            a.href = url;
+                            a.download = 'product_template.xlsx';
+                            document.body.appendChild(a);
+                            a.click();
+                            window.URL.revokeObjectURL(url);
+                            document.body.removeChild(a);
+                        }
+                    } catch (error) {
+                        console.error('下载模板失败:', error);
+                        this.showNotification('下载模板失败', 'error');
+                    }
+                },
+                showImportDialog() {
+                    this.showImport = true;
+                    this.selectedFile = null;
+                    this.uploading = false;
+                    this.uploadProgress = 0;
+                },
+                closeImportDialog() {
+                    if (this.uploading) {
+                        if (!confirm('文件正在上传中，确定要取消吗？')) {
+                            return;
+                        }
+                    }
+                    this.showImport = false;
+                    this.selectedFile = null;
+                    this.uploading = false;
+                    this.uploadProgress = 0;
+                },
+                handleFileSelect(e) {
+                    this.selectedFile = e.target.files[0];
+                },
+                importExcel() {
+                    if (!this.selectedFile || this.uploading) return;
+
+                    this.uploading = true;
+                    this.uploadProgress = 0;
+
+                        const formData = new FormData();
+                        formData.append('file', this.selectedFile);
+
+                    const xhr = new XMLHttpRequest();
+
+                    // 监听上传进度
+                    xhr.upload.addEventListener('progress', (e) => {
+                        if (e.lengthComputable) {
+                            this.uploadProgress = Math.round((e.loaded / e.total) * 100);
+                        }
+                        });
+
+                    // 监听请求完成
+                    xhr.addEventListener('load', () => {
+                        this.uploading = false;
+                        
+                        try {
+                        let result;
+                        try {
+                                result = JSON.parse(xhr.responseText);
+                        } catch (parseError) {
+                                throw new Error(xhr.responseText || `服务器错误 (${xhr.status})`);
+                        }
+
+                            if (xhr.status === 200 && result.success) {
+                            let message = `成功导入 ${result.count}/${result.total} 条商品`;
+                            if (result.imagesImported && result.imagesImported > 0) {
+                                message += `，包含 ${result.imagesImported} 张图片`;
+                            }
+
+                            // 如果有警告信息（部分失败）
+                            if (result.warning) {
+                                message += `\n⚠️ ${result.warning}`;
+                                if (result.errors && result.errors.length > 0) {
+                                    message += `\n错误详情：${result.errors.join('; ')}`;
+                                    if (result.errors.length >= 5) {
+                                        message += '（仅显示前5个错误）';
+                                    }
+                                }
+                                this.showNotification(message, 'error');
+                            } else {
+                                this.showNotification(message, 'success');
+                            }
+
+                            this.showImport = false;
+                            this.loadProducts();
+                        } else {
+                            // 显示详细的错误信息
+                                let errorMessage = result.error || result.message || `导入失败 (状态码: ${xhr.status})`;
+
+                            // 如果有多个错误，显示所有错误
+                            if (result.errors && Array.isArray(result.errors) && result.errors.length > 0) {
+                                errorMessage += `\n详细错误：${result.errors.join('; ')}`;
+                            }
+
+                            this.showNotification(errorMessage, 'error');
+                            console.error('导入失败详情:', result);
+                        }
+                    } catch (error) {
+                        console.error('导入失败:', error);
+                        const errorMessage = error.message || '导入失败，请检查文件格式是否正确';
+                        this.showNotification(errorMessage, 'error');
+                    }
+                    });
+
+                    // 监听请求错误
+                    xhr.addEventListener('error', () => {
+                        this.uploading = false;
+                        this.showNotification('网络错误，请检查网络连接后重试', 'error');
+                    });
+
+                    // 监听请求超时
+                    xhr.addEventListener('timeout', () => {
+                        this.uploading = false;
+                        this.showNotification('上传超时，请检查文件大小或网络连接', 'error');
+                    });
+
+                    // 设置超时时间为10分钟
+                    xhr.timeout = 600000;
+
+                    // 发送请求
+                    xhr.open('POST', '/api/products/import');
+                    xhr.send(formData);
+                },
+                // 选择/取消选择单个商品
+                toggleSelect(id) {
+                    const index = this.selectedIds.indexOf(id);
+                    if (index > -1) {
+                        this.selectedIds.splice(index, 1);
+                    } else {
+                        this.selectedIds.push(id);
+                    }
+                },
+                // 全选/取消全选
+                toggleSelectAll() {
+                    if (this.isAllSelected) {
+                        this.selectedIds = [];
+                    } else {
+                        this.selectedIds = this.products.map(p => p.id);
+                    }
+                },
+                // 清空选择
+                clearSelection() {
+                    this.selectedIds = [];
+                },
+                // 批量删除
+                async deleteSelected() {
+                    if (this.selectedIds.length === 0) {
+                        this.showNotification('请先选择要删除的商品', 'error');
+                        return;
+                    }
+
+                    if (!confirm(`确定要删除选中的 ${this.selectedIds.length} 件商品吗？此操作不可恢复！`)) {
+                        return;
+                    }
+
+                    try {
+                        const response = await fetch('/api/products/batch-delete', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify({ ids: this.selectedIds })
+                        });
+
+                        const result = await response.json();
+
+                        if (result.success) {
+                            this.showNotification(`成功删除 ${result.count} 件商品`, 'success');
+                            this.selectedIds = [];
+                            this.loadProducts();
+                        } else {
+                            this.showNotification(result.error || '删除失败', 'error');
+                        }
+                    } catch (error) {
+                        console.error('删除失败:', error);
+                        this.showNotification('删除失败', 'error');
+                    }
+                },
+                formatDate(dateStr) {
+                    if (!dateStr) return '-';
+                    const date = new Date(dateStr);
+                    return date.toLocaleDateString('zh-CN');
+                },
+                handleImageError(e) {
+                    console.error('图片加载失败:', e.target.src);
+                    e.target.style.display = 'none';
+                    const parent = e.target.parentElement;
+                    if (parent && !parent.querySelector('.no-image-placeholder')) {
+                        const placeholder = document.createElement('div');
+                        placeholder.className = 'no-image-placeholder';
+                        placeholder.style.cssText = 'display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; color: #999;';
+                        placeholder.textContent = '暂无图片';
+                        parent.appendChild(placeholder);
+                    }
+                },
+                showNotification(message, type = 'info') {
+                    const notification = document.createElement('div');
+                    notification.className = `notification notification-${type}`;
+                    notification.textContent = message;
+                    document.body.appendChild(notification);
+
+                    setTimeout(() => {
+                        notification.remove();
+                    }, 3000);
+                }
+            }
+        }).mount('#app');
+    </script>
+    <script src="/js/i18n.js"></script>
+</body>
+
+</html>

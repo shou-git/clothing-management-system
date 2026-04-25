@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>商品详情</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/vue@3.3.4/dist/vue.global.js"></script>
+</head>
+
+<body>
+    <div id="app">
+        <!-- 顶部栏 -->
+        <div class="top-bar">
+            <div class="container">
+                <h1>商品详情</h1>
+                <div class="actions">
+                    <a href="/looks.html" class="btn btn-secondary" style="background: #9C27B0;">Look管理</a>
+                    <a href="/products.html" class="btn btn-outline">返回列表</a>
+                </div>
+            </div>
+        </div>
+
+        <!-- 主内容 -->
+        <div class="container-narrow">
+            <!-- 加载状态 -->
+            <div v-if="loading" class="loading">
+                <div class="loading-spinner"></div>
+                <div>加载中...</div>
+            </div>
+
+            <!-- 商品详情 -->
+            <div v-else-if="product" class="detail-page">
+                <div class="detail-header">
+                    <h2>{{ product.product_no || '商品详情' }}</h2>
+                    <div class="detail-actions">
+                        <a :href="`/product-form.html?id=${product.id}`" class="btn btn-primary">编辑</a>
+                        <button @click="deleteProduct" class="btn btn-danger">删除</button>
+                    </div>
+                </div>
+
+                <div class="detail-content">
+                    <div>
+                        <div class="detail-image">
+                            <img v-if="product.image" :src="product.image" :alt="product.product_no"
+                                @error="handleImageError">
+                            <div v-else
+                                style="color: #999; display: flex; align-items: center; justify-content: center; width: 100%; height: 100%;">
+                                暂无图片</div>
+                        </div>
+                    </div>
+
+                    <div class="detail-info">
+                        <!-- 1. 货号 -->
+                        <div class="info-row">
+                            <div class="info-label">货号:</div>
+                            <div class="info-value">{{ product.product_no || '-' }}</div>
+                        </div>
+                        <!-- 2. 条形码 -->
+                        <div class="info-row">
+                            <div class="info-label">条形码:</div>
+                            <div class="info-value">{{ product.barcode || '-' }}</div>
+                        </div>
+                        <!-- 3. 设计师 -->
+                        <div class="info-row">
+                            <div class="info-label">设计师:</div>
+                            <div class="info-value">{{ product.designer || '-' }}</div>
+                        </div>
+                        <!-- 4. 颜色 -->
+                        <div class="info-row">
+                            <div class="info-label">颜色:</div>
+                            <div class="info-value">{{ product.color || '-' }}</div>
+                        </div>
+                        <!-- 5. 尺寸 -->
+                        <div class="info-row">
+                            <div class="info-label">尺寸:</div>
+                            <div class="info-value">{{ product.size || '-' }}</div>
+                        </div>
+                        <!-- 6. 品名 -->
+                        <div class="info-row">
+                            <div class="info-label">品名:</div>
+                            <div class="info-value">{{ product.product_name || '-' }}</div>
+                        </div>
+                        <!-- 7. 备注 -->
+                        <div class="info-row">
+                            <div class="info-label">备注:</div>
+                            <div class="info-value">{{ product.notes || '-' }}</div>
+                        </div>
+                        <!-- 8. 商品ID -->
+                        <div class="info-row">
+                            <div class="info-label">商品ID:</div>
+                            <div class="info-value">{{ product.id }}</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 所属Look -->
+                <div class="related-section" v-if="product.looks && product.looks.length > 0">
+                    <h3>所属 Look ({{ product.looks.length }})</h3>
+                    <div class="card-grid">
+                        <div v-for="look in product.looks" :key="look.id" class="card" @click="goToLook(look.id)">
+                            <div class="card-image">
+                                <img v-if="look.image" :src="look.image" :alt="look.name" @error="handleImageError">
+                                <div v-else
+                                    style="display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; color: #999;">
+                                    暂无图片</div>
+                            </div>
+                            <div class="card-body">
+                                <div class="card-title">{{ look.name }}</div>
+                                <div class="card-info">{{ look.notes || '无备注' }}</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="related-section" v-else>
+                    <h3>所属 Look</h3>
+                    <div class="empty-state">
+                        <div class="empty-state-icon">✨</div>
+                        <div class="empty-state-text">该商品还未加入任何 Look</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 未找到 -->
+            <div v-else class="empty-state">
+                <div class="empty-state-icon">❌</div>
+                <div class="empty-state-text">商品不存在</div>
+            </div>
+        </div>
+    </div>
+
+    <style>
+        /* 所属 Look 图片竖向显示，长2高3 */
+        .related-section .card-image {
+            height: auto !important;
+            aspect-ratio: 2 / 3;
+        }
+    </style>
+
+    <script>
+        const { createApp } = Vue;
+
+        createApp({
+            data() {
+                return {
+                    product: null,
+                    loading: true,
+                    productId: null
+                }
+            },
+            mounted() {
+                const params = new URLSearchParams(window.location.search);
+                this.productId = params.get('id');
+                if (this.productId) {
+                    this.loadProduct();
+                } else {
+                    this.loading = false;
+                }
+            },
+            methods: {
+                async loadProduct() {
+                    try {
+                        this.loading = true;
+                        const response = await fetch(`/api/products/${this.productId}`);
+                        if (response.ok) {
+                            this.product = await response.json();
+                        } else {
+                            this.product = null;
+                        }
+                    } catch (error) {
+                        console.error('加载商品失败:', error);
+                        this.showNotification('加载商品失败', 'error');
+                    } finally {
+                        this.loading = false;
+                    }
+                },
+                async deleteProduct() {
+                    if (!confirm('确定要删除这个商品吗？')) return;
+
+                    try {
+                        const response = await fetch(`/api/products/${this.productId}`, {
+                            method: 'DELETE'
+                        });
+
+                        if (response.ok) {
+                            this.showNotification('删除成功', 'success');
+                            setTimeout(() => {
+                                window.location.href = '/products.html';
+                            }, 1000);
+                        } else {
+                            this.showNotification('删除失败', 'error');
+                        }
+                    } catch (error) {
+                        console.error('删除失败:', error);
+                        this.showNotification('删除失败', 'error');
+                    }
+                },
+                goToLook(id) {
+                    window.location.href = `/look-detail.html?id=${id}`;
+                },
+                handleImageError(e) {
+                    console.error('图片加载失败:', e.target.src);
+                    e.target.style.display = 'none';
+                },
+                formatDate(dateStr) {
+                    if (!dateStr) return '-';
+                    const date = new Date(dateStr);
+                    return date.toLocaleString('zh-CN');
+                },
+                showNotification(message, type = 'info') {
+                    const notification = document.createElement('div');
+                    notification.className = `notification notification-${type}`;
+                    notification.textContent = message;
+                    document.body.appendChild(notification);
+
+                    setTimeout(() => {
+                        notification.remove();
+                    }, 3000);
+                }
+            }
+        }).mount('#app');
+    </script>
+    <script src="/js/i18n.js"></script>
+</body>
+
+</html>
